@@ -1,0 +1,41 @@
+# Local-development PostgreSQL for the MadiCloud control plane.
+#
+# This runs only PostgreSQL. It is not a MadiCloud workload and not how
+# MadiCloud runs applications.
+#
+#   export MADICLOUD_DB_PASSWORD="$(openssl rand -hex 24)"
+#   docker compose -f deployments/docker-compose.yml up -d --wait
+#
+# Credentials come from the same MADICLOUD_DB_* variables madicloudd reads.
+# There is no default password; Compose refuses to start without one.
+#
+# POSTGRES_PASSWORD is applied only when the volume is first initialized.
+# Changing MADICLOUD_DB_PASSWORD later requires ALTER ROLE or
+# "docker compose -f deployments/docker-compose.yml down -v" (deletes data).
+
+name: madicloud
+
+services:
+  postgres:
+    image: postgres:18.4
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${MADICLOUD_DB_USER:-madicloud}
+      POSTGRES_DB: ${MADICLOUD_DB_NAME:-madicloud}
+      POSTGRES_PASSWORD: ${MADICLOUD_DB_PASSWORD:?set MADICLOUD_DB_PASSWORD}
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256 --auth-local=scram-sha-256
+    ports:
+      # Loopback only: the database is not reachable from other machines.
+      - "127.0.0.1:${MADICLOUD_DB_PORT:-5432}:5432"
+    volumes:
+      # PostgreSQL 18 images keep data under /var/lib/postgresql/18/docker.
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+
+volumes:
+  postgres-data:
